@@ -28,3 +28,14 @@ modelscope_models
 examples/aishell/llm_asr_nar/*
 *egg-info
 env/
+.vscode
+runtime/android/AndroidClient/.gradle/
+runtime/onnxruntime
+runtime/websocket/_deps
+runtime/websocket/yaml-cpp/
+runtime/websocket/CMakeFiles/
+runtime/websocket/third_party/
+runtime/websocket/build/
+runtime/websocket/Release/
+runtime/websocket/Debug/
+runtime/websocket/CMakeCache.txt
