@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch import nn
-from torch.cuda.amp import autocast
+from funasr.utils.amp import autocast
 from funasr.metrics.compute_acc import compute_accuracy, th_accuracy
 from funasr.losses.label_smoothing_loss import LabelSmoothingLoss
 from funasr.train_utils.device_funcs import force_gatherable
@@ -1093,8 +1093,10 @@ class SenseVoiceSmall(nn.Module):
             start = int(start * 1000)
             end = int(end * 1000)
             if word == "▁":
+                prev_word = None
                 continue
             if i == 0:
+                word = word[1:] if word.startswith("▁") else word
                 # timestamp_new.append([word, start, end])
                 timestamp_new.append([start, end])
                 words_new.append(word)

@@ -16,7 +16,7 @@ from typing import Union
 from pathlib import Path
 from typing import Generator, Union
 from abc import ABCMeta, abstractmethod
-import torchaudio.compliance.kaldi as Kaldi
+from funasr.utils import fbank as Kaldi
 
 from funasr.models.transformer.utils.nets_utils import pad_list
 
@@ -138,8 +138,12 @@ def extract_feature(audio):
 
 
 def postprocess(
-    segments: list, vad_segments: list, labels: np.ndarray, embeddings: np.ndarray
-) -> list:
+    segments: list,
+    vad_segments: list,
+    labels: np.ndarray,
+    embeddings: np.ndarray,
+    return_spk_center: bool = False,
+) -> Union[list, tuple]:
     """Postprocess.
     
         Args:
@@ -155,13 +159,6 @@ def postprocess(
         distribute_res.append([segments[i][0], segments[i][1], labels[i]])
     # merge the same speakers chronologically
     distribute_res = merge_seque(distribute_res)
-
-    # accquire speaker center
-    spk_embs = []
-    for i in range(labels.max() + 1):
-        spk_emb = embeddings[labels == i].mean(0)
-        spk_embs.append(spk_emb)
-    spk_embs = np.stack(spk_embs)
 
     def is_overlapped(t1, t2):
         """Is overlapped.
@@ -184,6 +181,14 @@ def postprocess(
     # smooth the result
     distribute_res = smooth(distribute_res)
 
+    if return_spk_center:
+        # spk_embs[i] is the centroid (mean of clustered chunk embeddings) for
+        # corrected speaker label i, aligned with the `spk` ids in sentence_info.
+        # Computed lazily: only when the caller requests speaker centers.
+        spk_embs = np.stack(
+            [embeddings[labels == i].mean(0) for i in range(labels.max() + 1)]
+        )
+        return distribute_res, spk_embs
     return distribute_res
 
 
@@ -249,26 +254,21 @@ def smooth(res, mindur=0.7):
 
 
 def distribute_spk(sentence_list, sd_time_list):
-    """Distribute spk.
-    
-        Args:
-            sentence_list: TODO.
-            sd_time_list: TODO.
-        """
+    """Assign each sentence to the speaker with the greatest total overlap.
+
+    Sentence times are milliseconds; diarization times are seconds. Equal
+    totals retain the first overlapping speaker, and no overlap defaults to 0.
+    """
     sd_time_list = [(spk_st * 1000, spk_ed * 1000, spk) for spk_st, spk_ed, spk in sd_time_list]
     for d in sentence_list:
         sentence_start = d['start']
         sentence_end = d['end']
-        sentence_spk = 0
-        max_overlap = 0
+        speaker_overlaps = {}
         for spk_st, spk_ed, spk in sd_time_list:
             overlap = max(min(sentence_end, spk_ed) - max(sentence_start, spk_st), 0)
-            if overlap > max_overlap:
-                max_overlap = overlap
-                sentence_spk = spk
-            if overlap > 0 and sentence_spk == spk:
-                max_overlap += overlap
-        d['spk'] = int(sentence_spk)
+            if overlap > 0:
+                speaker_overlaps[spk] = speaker_overlaps.get(spk, 0) + overlap
+        d['spk'] = int(max(speaker_overlaps, key=speaker_overlaps.get, default=0))
     return sentence_list
 
 

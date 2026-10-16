@@ -27,7 +27,7 @@ Cloud service providers offer a 3-month free trial for new users. Application tu
 Download the deployment tool `funasr-runtime-deploy-offline-cpu-zh.sh`
 
 ```shell
-curl -O https://raw.githubusercontent.com/alibaba-damo-academy/FunASR/main/runtime/deploy_tools/funasr-runtime-deploy-offline-cpu-zh.sh;
+curl -O https://raw.githubusercontent.com/modelscope/FunASR/main/runtime/deploy_tools/funasr-runtime-deploy-offline-cpu-zh.sh;
 # If there is a network problem, users in mainland China can use the following command:
 # curl -O https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/shell/funasr-runtime-deploy-offline-cpu-zh.sh;
 ```
@@ -179,7 +179,7 @@ If you encounter any problems during use, please join our user group for feedbac
 
 |                                DingDing Group                                |                             Wechat                             |
 |:----------------------------------------------------------------------------:|:--------------------------------------------------------------:|
-| <div align="left"><img src="../../../docs/images/dingding.jpg" width="250"/> | <img src="../../../docs/images/wechat.png" width="232"/></div> |
+| <div align="left"><img src="../../docs/images/dingding.png" width="250"/> | <img src="../../docs/images/wechat.png" width="232"/></div> |
 
 
 

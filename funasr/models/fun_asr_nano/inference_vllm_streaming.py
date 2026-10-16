@@ -56,7 +56,8 @@ class FunASRNanoStreamingVLLM:
     Args:
         model_dir: Path to Fun-ASR-Nano model directory.
         device: Device for audio encoder/adaptor.
-        dtype: Compute dtype ("bf16", "fp16", "fp32").
+        dtype: Audio compute dtype ("bf16", "fp16", "fp32"). The Qwen3
+            language model uses bf16 when audio compute uses fp16.
         tensor_parallel_size: GPUs for vLLM tensor parallelism.
         gpu_memory_utilization: GPU memory fraction for KV cache.
         max_model_len: Maximum sequence length.
@@ -69,7 +70,10 @@ class FunASRNanoStreamingVLLM:
                  max_model_len=2048, enforce_eager=False,
                  chunk_ms=720, rollback_chars=8, **kwargs):
         from vllm import LLM
-        from funasr.models.fun_asr_nano.inference_vllm import prepare_vllm_model_dir
+        from funasr.models.fun_asr_nano.inference_vllm import (
+            _resolve_vllm_dtype,
+            prepare_vllm_model_dir,
+        )
 
         self.device = device
         self.dtype = dtype
@@ -87,7 +91,7 @@ class FunASRNanoStreamingVLLM:
             tensor_parallel_size=tensor_parallel_size,
             gpu_memory_utilization=gpu_memory_utilization,
             max_model_len=max_model_len, enforce_eager=enforce_eager,
-            dtype={"bf16": "bfloat16", "fp16": "float16", "fp32": "auto"}.get(dtype, dtype),
+            dtype=_resolve_vllm_dtype(dtype),
             trust_remote_code=True, **vllm_kwargs,
         )
         self.tokenizer = self.vllm_engine.get_tokenizer()
@@ -234,8 +238,15 @@ class FunASRNanoStreamingVLLM:
         chunk_samples = int(self.sample_rate * chunk_ms / 1000)
         num_chunks = (total_samples + chunk_samples - 1) // chunk_samples
 
-        params = SamplingParams(max_tokens=max_new_tokens, temperature=temperature,
-                                repetition_penalty=1.3, skip_special_tokens=True)
+        from funasr.models.fun_asr_nano.vllm_utils import resolve_repetition_penalty
+
+        # Prompt-embeds mode has no token IDs to penalize; see #2948.
+        params = SamplingParams(
+            max_tokens=max_new_tokens, temperature=temperature,
+            repetition_penalty=resolve_repetition_penalty(
+                kwargs.get("repetition_penalty", 1.0)
+            ),
+            skip_special_tokens=True)
 
         # Two-stage approach for long audio:
         # Stage 1: batch first N chunks fresh (no prev_text) to find stable output

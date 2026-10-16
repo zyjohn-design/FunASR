@@ -8,7 +8,6 @@ import torch
 import torch.nn
 import torch.optim
 import pdb
-import copy
 
 
 def load_pretrained_model(
@@ -41,10 +40,14 @@ def load_pretrained_model(
         buffer = BytesIO(oss_bucket.get_object(path).read())
         ori_state = torch.load(buffer, map_location=map_location)
 
-    src_state = copy.deepcopy(ori_state)
+    # ori_state is created by torch.load inside this function, is not shared
+    # with the caller, and is not read again below; src_state is only read.
+    # Deep-copying every tensor here doubles peak load memory with no effect.
+    src_state = ori_state
     src_state = src_state["state_dict"] if "state_dict" in src_state else src_state
     src_state = src_state["model_state_dict"] if "model_state_dict" in src_state else src_state
     src_state = src_state["model"] if "model" in src_state else src_state
+    loaded_keys = set()
 
     if isinstance(scope_map, str):
         scope_map = scope_map.split(",")
@@ -96,8 +99,18 @@ def load_pretrained_model(
                 )
             else:
                 dst_state[k] = src_state[k_src]
+                loaded_keys.add(k)
         else:
             print(f"Warning, miss key in ckpt: {k}, {path}")
 
     flag = obj.load_state_dict(dst_state, strict=True)
+    on_loaded = getattr(obj, "on_pretrained_model_loaded", None)
+    if not callable(on_loaded) and hasattr(obj, "module"):
+        on_loaded = getattr(obj.module, "on_pretrained_model_loaded", None)
+        if callable(on_loaded):
+            loaded_keys = {
+                key[len("module.") :] if key.startswith("module.") else key for key in loaded_keys
+            }
+    if callable(on_loaded):
+        on_loaded(frozenset(loaded_keys))
     logging.info(f"Loading ckpt: {path}, status: {flag}")

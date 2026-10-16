@@ -189,11 +189,10 @@ def timestamp_sentence(
 
         punc_id = int(punc_id) if punc_id is not None else 1
         sentence_end = timestamp[1] if timestamp is not None else sentence_end
-        sentence_text_seg = (
-            sentence_text_seg[:-1] if sentence_text_seg and sentence_text_seg[-1] == " " else sentence_text_seg
-        )
         if punc_id > 1:
             sentence_text += punc_list[punc_id - 2]
+            if sentence_text_seg.endswith(" "):
+                sentence_text_seg = sentence_text_seg[:-1]
             if return_raw_text:
                 res.append(
                     {
@@ -217,6 +216,16 @@ def timestamp_sentence(
             sentence_text_seg = ""
             ts_list = []
             sentence_start = None
+    if sentence_text and all(timestamp is not None for timestamp in ts_list):
+        sentence = {
+            "text": sentence_text,
+            "start": sentence_start,
+            "end": sentence_end,
+            "timestamp": ts_list,
+        }
+        if return_raw_text:
+            sentence["raw_text"] = sentence_text_seg.rstrip()
+        res.append(sentence)
     return res
 
 
@@ -263,9 +272,10 @@ def timestamp_sentence_en(
     punc_stamp_text_list = list(
         zip_longest(punc_id_list, timestamp_postprocessed, texts, fillvalue=None)
     )
-    is_sentence_start = True
     for punc_stamp_text in punc_stamp_text_list:
         punc_id, timestamp, text = punc_stamp_text
+        if sentence_start is None and timestamp is not None:
+            sentence_start = timestamp[0]
         # sentence_text += text if text is not None else ''
         if text is not None:
             if "a" <= text[0] <= "z" or "A" <= text[0] <= "Z":
@@ -281,16 +291,12 @@ def timestamp_sentence_en(
 
         punc_id = int(punc_id) if punc_id is not None else 1
         sentence_end = timestamp[1] if timestamp is not None else sentence_end
-        sentence_text = sentence_text[1:] if sentence_text[0] == ' ' else sentence_text
-        if is_sentence_start:
-            sentence_start = timestamp[0] if timestamp is not None else sentence_start
-            is_sentence_start = False
+        if sentence_text.startswith(" "):
+            sentence_text = sentence_text[1:]
         if punc_id > 1:
-            is_sentence_start = True
             sentence_text += punc_list[punc_id - 2]
-            sentence_text_seg = (
-                sentence_text_seg[:-1] if sentence_text_seg[-1] == " " else sentence_text_seg
-            )
+            if sentence_text_seg.endswith(" "):
+                sentence_text_seg = sentence_text_seg[:-1]
             if return_raw_text:
                 res.append(
                     {
@@ -313,4 +319,15 @@ def timestamp_sentence_en(
             sentence_text = ""
             sentence_text_seg = ""
             ts_list = []
+            sentence_start = None
+    if sentence_text and all(timestamp is not None for timestamp in ts_list):
+        sentence = {
+            "text": sentence_text,
+            "start": sentence_start,
+            "end": sentence_end,
+            "timestamp": ts_list,
+        }
+        if return_raw_text:
+            sentence["raw_text"] = sentence_text_seg.rstrip()
+        res.append(sentence)
     return res
