@@ -11,6 +11,8 @@ All endpoints share the same vLLM engine + dynamic VAD + SPK + timestamps.
 Usage:
     CUDA_VISIBLE_DEVICES=0 python serve_vllm.py --port 8000
     CUDA_VISIBLE_DEVICES=0 python serve_vllm.py --port 8000 --model FunAudioLLM/Fun-ASR-Nano-2512
+    # Ascend NPU: --device defaults to npu:0 when torch_npu sees an NPU
+    ASCEND_RT_VISIBLE_DEVICES=0 python serve_vllm.py --port 8000
 """
 
 import asyncio
@@ -425,13 +427,22 @@ if __name__ == "__main__":
     parser.add_argument("--host", type=str, default="0.0.0.0")
     parser.add_argument("--model", type=str, default="FunAudioLLM/Fun-ASR-Nano-2512")
     parser.add_argument("--hub", type=str, default="ms")
-    parser.add_argument("--device", type=str, default="cuda:0")
+    parser.add_argument(
+        "--device", type=str, default=None,
+        help="Inference device; default: $FUNASR_DEVICE, else npu:0 if available, else cuda:0.",
+    )
     parser.add_argument("--dtype", type=str, default="bf16")
     parser.add_argument("--max-model-len", type=int, default=4096)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.5)
     parser.add_argument("--vad-model", type=str, default="fsmn-vad", help="VAD model name or local path")
     parser.add_argument("--spk-model", type=str, default="iic/speech_eres2netv2_sv_zh-cn_16k-common", help="Speaker model name or local path (set empty to disable)")
     _args = parser.parse_args()
+    from funasr.utils.device_select import default_device, prepare_device
+
+    if _args.device is None:
+        _args.device = default_device()
+    prepare_device(_args.device)
+    logger.info(f"Device: {_args.device}")
 
     load_engine(_args)
     uvicorn.run(app, host=_args.host, port=_args.port)

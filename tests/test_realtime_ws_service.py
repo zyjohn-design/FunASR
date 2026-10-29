@@ -119,6 +119,8 @@ def test_cli_defaults_disable_speaker_and_bound_partial_window():
     assert args.log_decode_profile is False
     assert args.vad_device == "cpu"
     assert args.vad_ncpu == 1
+    # Resolved in cli_main(): $FUNASR_DEVICE, then npu:0, then cuda:0.
+    assert args.device is None
 
 
 def test_cli_accepts_client_endpoint_mode():

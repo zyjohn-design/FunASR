@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1.7
+#
+# Fun-ASR-Nano + vLLM-Ascend image for Atlas 800I/800T A2 (Ascend 910B).
+# Build from the repository root:
+#   docker build -f runtime/dockerfile/Dockerfile.npu \
+#     --build-arg VLLM_ASCEND_IMAGE=quay.io/ascend/vllm-ascend:v0.23.0.post1 \
+#     -t funasr-npu:v0.23.0.post1 .
+# Swap VLLM_ASCEND_IMAGE (e.g. v0.19.1rc1 baseline, v0.30.0rc2, *-openeuler) to compare
+# versions. Plain tags target A2/910B; "-a3" tags target A3, "-310p" tags 310P.
+# v0.23.0.post1 = latest final release: vllm 0.23.0, CANN 9.1.0, torch 2.10.0 /
+# torch_npu 2.10.0.post4. Host NPU driver/firmware must support that CANN.
+
+ARG VLLM_ASCEND_IMAGE=quay.io/ascend/vllm-ascend:v0.23.0.post1
+FROM ${VLLM_ASCEND_IMAGE}
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTORCH_NPU_ALLOC_CONF=expandable_segments:True \
+    FUNASR_DEVICE=npu:0
+
+WORKDIR /workspace/FunASR
+COPY . /workspace/FunASR
+
+# The base image pairs vllm / vllm-ascend / torch / torch_npu / CANN. Pin every
+# package already installed so resolving FunASR dependencies cannot replace them
+# (e.g. with a CUDA torch wheel); resolution fails instead of swapping torch.
+# pip check is reported, not fatal: some base images ship pre-existing conflicts.
+RUN python3 -m pip list --format=freeze > /tmp/base-constraints.txt && \
+    python3 -m pip install -c /tmp/base-constraints.txt -e ".[knf]" \
+        fastapi uvicorn python-multipart && \
+    (python3 -m pip check || echo "WARNING: pip check reported conflicts (see above)") && \
+    python3 -c "import torch, torch_npu, vllm, vllm_ascend; \
+print('torch', torch.__version__, '| torch_npu', torch_npu.__version__, \
+'| vllm', vllm.__version__, '| vllm_ascend', getattr(vllm_ascend, '__version__', '?'))"
+
+COPY runtime/dockerfile/npu-entrypoint.sh /usr/local/bin/npu-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/npu-entrypoint.sh
+
+# 8899: OpenAI /v1/audio/transcriptions + /asr + offline /ws
+# 10095: realtime streaming WebSocket
+EXPOSE 8899 10095
+VOLUME ["/root/.cache/modelscope", "/root/.cache/huggingface"]
+ENTRYPOINT ["/usr/local/bin/npu-entrypoint.sh"]

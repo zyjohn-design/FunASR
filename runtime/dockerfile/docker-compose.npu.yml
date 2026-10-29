@@ -1,0 +1,41 @@
+# Fun-ASR-Nano on Ascend 910B with vLLM-Ascend.
+#   cd runtime/dockerfile
+#   docker compose -f docker-compose.npu.yml up -d --build
+# Compare vLLM-Ascend versions by changing the base image tag:
+#   VLLM_ASCEND_TAG=v0.19.1rc1 docker compose -f docker-compose.npu.yml up -d --build
+# NPU_ID selects the physical card (/dev/davinciN); inside the container it is npu:0.
+
+services:
+  funasr-npu:
+    build:
+      context: ../..
+      dockerfile: runtime/dockerfile/Dockerfile.npu
+      args:
+        VLLM_ASCEND_IMAGE: ${VLLM_ASCEND_REPO:-quay.io/ascend/vllm-ascend}:${VLLM_ASCEND_TAG:-v0.23.0.post1}
+    image: funasr-npu:${VLLM_ASCEND_TAG:-v0.23.0.post1}
+    container_name: funasr-npu-${NPU_ID:-0}
+    restart: unless-stopped
+    shm_size: 16g
+    devices:
+      - /dev/davinci${NPU_ID:-0}
+      - /dev/davinci_manager
+      - /dev/devmm_svm
+      - /dev/hisi_hdc
+    volumes:
+      - /usr/local/dcmi:/usr/local/dcmi
+      - /usr/local/bin/npu-smi:/usr/local/bin/npu-smi
+      - /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/
+      - /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info
+      - /etc/ascend_install.info:/etc/ascend_install.info
+      - ${FUNASR_MODEL_CACHE:-./cache/modelscope}:/root/.cache/modelscope
+      - ${FUNASR_HF_CACHE:-./cache/huggingface}:/root/.cache/huggingface
+    environment:
+      FUNASR_SERVICE: ${FUNASR_SERVICE:-all}
+      FUNASR_MODEL: ${FUNASR_MODEL:-FunAudioLLM/Fun-ASR-Nano-2512}
+      FUNASR_HUB: ${FUNASR_HUB:-ms}
+      FUNASR_LANGUAGE: ${FUNASR_LANGUAGE:-}
+      FUNASR_OPENAI_ARGS: ${FUNASR_OPENAI_ARGS:-}
+      FUNASR_REALTIME_ARGS: ${FUNASR_REALTIME_ARGS:-}
+    ports:
+      - "${FUNASR_HTTP_PORT:-8899}:8899"
+      - "${FUNASR_WS_PORT:-10095}:10095"

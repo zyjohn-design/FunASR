@@ -1619,7 +1619,10 @@ def build_arg_parser():
     parser.add_argument("--port", type=int, default=10095)
     parser.add_argument("--model", type=str, default="FunAudioLLM/Fun-ASR-Nano-2512")
     parser.add_argument("--hub", type=str, default="ms", choices=["ms", "hf"])
-    parser.add_argument("--device", type=str, default="cuda:0")
+    parser.add_argument(
+        "--device", type=str, default=None,
+        help="ASR/SPK device; default: $FUNASR_DEVICE, else npu:0 if available, else cuda:0.",
+    )
     parser.add_argument(
         "--vad-device",
         type=str,
@@ -1722,6 +1725,12 @@ def build_arg_parser():
 
 def cli_main():
     args = build_arg_parser().parse_args()
+    from funasr.utils.device_select import default_device, prepare_device
+
+    if args.device is None:
+        args.device = default_device()
+    prepare_device(args.device)
+    logger.info(f"Device: {args.device}")
     asyncio.run(main(args))
 
 
