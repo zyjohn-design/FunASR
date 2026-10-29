@@ -32,6 +32,7 @@ from funasr.utils.postprocess_hotwords import (
     apply_postprocess_hotwords_to_results,
     parse_postprocess_hotwords,
 )
+from funasr.train_utils.device_funcs import is_out_of_memory_error
 
 warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -200,9 +201,8 @@ class RealtimeBatchingEngine:
                     f"{len(results)} != {len(inputs)}"
                 )
         except Exception as error:
-            if len(requests) > 1 and not isinstance(
-                error, torch.cuda.OutOfMemoryError
-            ):
+            # Splitting a batch after OOM only multiplies memory pressure.
+            if len(requests) > 1 and not is_out_of_memory_error(error):
                 logger.warning(
                     "Realtime decode batch failed; retrying %d requests separately: %s",
                     len(requests),

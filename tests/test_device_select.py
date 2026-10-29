@@ -4,6 +4,9 @@ import types
 from pathlib import Path
 
 import pytest
+import torch
+
+from funasr.train_utils import device_funcs
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,9 +23,12 @@ def load_module():
 
 
 def install_torch_npu(monkeypatch, available):
+    # torch_npu registers ``torch.npu`` on import; emulate both halves.
+    npu = types.SimpleNamespace(is_available=lambda: available)
     stub = types.ModuleType("torch_npu")
-    stub.npu = types.SimpleNamespace(is_available=lambda: available)
+    stub.npu = npu
     monkeypatch.setitem(sys.modules, "torch_npu", stub)
+    monkeypatch.setattr(torch, "npu", npu, raising=False)
 
 
 def hide_torch_npu(monkeypatch):
@@ -65,6 +71,30 @@ def test_prepare_device_rejects_npu_without_backend(monkeypatch):
     with pytest.raises(RuntimeError, match="torch_npu"):
         module.prepare_device("npu:0")
     assert module.prepare_device("cuda:0") == "cuda:0"
+
+
+def test_broken_npu_backend_is_reported_unavailable(monkeypatch):
+    def broken():
+        raise RuntimeError("CANN driver mismatch")
+
+    stub = types.ModuleType("torch_npu")
+    monkeypatch.setitem(sys.modules, "torch_npu", stub)
+    monkeypatch.setattr(torch, "npu", types.SimpleNamespace(is_available=broken), raising=False)
+
+    assert device_funcs.is_accelerator_available("npu") is False
+
+
+@pytest.mark.parametrize(
+    "error, expected",
+    [
+        (torch.OutOfMemoryError("CUDA out of memory. Tried to allocate 2 GiB"), True),
+        (RuntimeError("NPU out of memory. Tried to allocate 1.00 GiB"), True),
+        (RuntimeError("shape mismatch"), False),
+        (ValueError("out of memory"), False),
+    ],
+)
+def test_is_out_of_memory_error_covers_cuda_and_npu(error, expected):
+    assert device_funcs.is_out_of_memory_error(error) is expected
 
 
 def test_npu_dockerfile_uses_switchable_vllm_ascend_base():

@@ -1,4 +1,5 @@
 import dataclasses
+import logging
 import warnings
 
 import numpy as np
@@ -108,6 +109,36 @@ def get_accelerator_device_type():
         except Exception:
             continue
     return "cpu"
+
+
+def is_accelerator_available(device_type):
+    """Return True when ``device_type`` ("cuda"/"npu"/"xpu") has a usable device.
+
+    Unlike :func:`get_accelerator_device_type`, this never raises: a broken
+    torch_npu / CANN install (which can fail with non-ImportError exceptions)
+    is logged and reported as unavailable, so service CLIs can choose a default.
+    """
+    try:
+        module = _accelerator_module(device_type)
+        return module is not None and bool(module.is_available())
+    except Exception as error:
+        logging.warning("%s backend probe failed: %s", device_type, error)
+        return False
+
+
+def is_out_of_memory_error(error):
+    """Return True for accelerator out-of-memory errors (CUDA or Ascend NPU).
+
+    CUDA raises ``torch.OutOfMemoryError`` (``torch.cuda.OutOfMemoryError`` on
+    older torch). torch_npu releases differ: some raise the same class, others a
+    plain ``RuntimeError("NPU out of memory. ...")``, so the message is checked too.
+    """
+    oom_type = getattr(torch, "OutOfMemoryError", None) or getattr(
+        torch.cuda, "OutOfMemoryError", None
+    )
+    if oom_type is not None and isinstance(error, oom_type):
+        return True
+    return isinstance(error, RuntimeError) and "out of memory" in str(error).lower()
 
 
 def accelerator_device(local_rank=0):

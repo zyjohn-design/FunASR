@@ -2126,6 +2126,62 @@ def test_realtime_batching_engine_propagates_engine_errors():
         batching_engine.generate([np.array([1], dtype=np.float32)])
 
 
+@pytest.mark.parametrize(
+    "message, expect_split",
+    [
+        ("NPU out of memory. Tried to allocate 1.00 GiB", False),
+        ("synthetic batch failure", True),
+    ],
+)
+def test_realtime_batching_engine_does_not_split_batch_after_npu_oom(
+    message, expect_split
+):
+    module = load_service_module()
+
+    class FailingEngine:
+        def __init__(self):
+            self.batch_sizes = []
+
+        def generate(self, inputs, **kwargs):
+            self.batch_sizes.append(len(inputs))
+            if len(inputs) > 1 or not expect_split:
+                raise RuntimeError(message)
+            return [{"text": "ok"}]
+
+    engine = FailingEngine()
+    batching_engine = module.RealtimeBatchingEngine(
+        engine, batch_wait_ms=50, max_batch_size=8
+    )
+    barrier = threading.Barrier(3)
+    outcomes = [None, None]
+
+    def generate(index):
+        barrier.wait()
+        try:
+            outcomes[index] = batching_engine.generate(
+                [np.array([index], dtype=np.float32)], language="zh"
+            )
+        except Exception as error:
+            outcomes[index] = error
+
+    threads = [threading.Thread(target=generate, args=(i,)) for i in range(2)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert engine.batch_sizes[0] == 2
+    if expect_split:
+        assert engine.batch_sizes[1:] == [1, 1]
+        assert outcomes == [[{"text": "ok"}], [{"text": "ok"}]]
+    else:
+        # OOM fails the whole batch once instead of retrying per request.
+        assert engine.batch_sizes == [2]
+        assert all(isinstance(outcome, RuntimeError) for outcome in outcomes)
+
+
 def test_realtime_batching_engine_recovers_from_request_grouping_error():
     module = load_service_module()
 
