@@ -111,9 +111,9 @@ def compute_wer(
     )
     cer_detail_writer.write(
         "Scored "
-        + str(len(hyp_dict))
+        + str(rst["Snt"])
         + " sentences, "
-        + str(len(hyp_dict) - rst["Snt"])
+        + str(len(ref_dict) - rst["Snt"])
         + " not present in hyp."
         + "\n"
     )
@@ -134,7 +134,11 @@ def compute_wer_by_line(hyp, ref):
     len_hyp = len(hyp)
     len_ref = len(ref)
 
-    cost_matrix = np.zeros((len_hyp + 1, len_ref + 1), dtype=np.int16)
+    # An edit distance can be as large as max(len_hyp, len_ref), so a 16-bit
+    # accumulator overflows as soon as either input reaches 32768 tokens and
+    # the first row/column initialisation tries to store that index. int32
+    # covers any input this O(len_hyp * len_ref) loop can realistically reach.
+    cost_matrix = np.zeros((len_hyp + 1, len_ref + 1), dtype=np.int32)
 
     ops_matrix = np.zeros((len_hyp + 1, len_ref + 1), dtype=np.int8)
 
@@ -206,6 +210,9 @@ def print_cer_detail(rst):
         Args:
             rst: TODO.
         """
+    # An empty reference (e.g. a silent utterance) has no words; report its
+    # errors against one word instead of raising ZeroDivisionError.
+    nwords = max(rst["nwords"], 1)
     return (
         "("
         + "nwords="
@@ -219,9 +226,9 @@ def print_cer_detail(rst):
         + ",sub="
         + str(rst["sub"])
         + ") corr:"
-        + "{:.2%}".format(rst["cor"] / rst["nwords"])
+        + "{:.2%}".format(rst["cor"] / nwords)
         + ",cer:"
-        + "{:.2%}".format(rst["wrong"] / rst["nwords"])
+        + "{:.2%}".format(rst["wrong"] / nwords)
     )
 
 
